@@ -33,10 +33,9 @@ class ImageEnhancer:
             return
         
         # Counting the frequencies of values
-        img_histogram = np.zeros(256, dtype=np.uint32)
-        for i in range(256):
-            img_histogram[i] = np.sum(self.imglow[img_index] == i)
-            img_histogram[i] += img_histogram[i-1] if i > 0 else 0
+        img_histogram, _ = np.histogram(self.imglow[img_index], bins=range(257))
+        for i in range(1, 256):
+            img_histogram[i] += img_histogram[i-1]
         self.histogram[img_index] = img_histogram
 
     def joint_cumulative_histogram(self) -> np.array:
@@ -47,21 +46,27 @@ class ImageEnhancer:
             self.joint_histogram = self.histogram.sum(axis=0) / 4
             self.has_joint_histogram = True
     
-    def plt_transformation(self, img_index: int, new_img: np.array) -> None:
+    def plt_transformation(self, new_img: np.array, img_index: int=-1) -> None:
         _, ax = plt.subplots(1, 2)
         ax[0].set_xlim([len(new_img), 0])
         ax[0].set_ylim([len(new_img[0]), 0])
+        ax[1].set_xlim([len(new_img), 0])
+        ax[1].set_ylim([len(new_img[0]), 0])
         
         # Original Image
-        ax[0].set_title(f"{self.imglow_name}{img_index}.png")
-        ax[0].imshow(self.imglow[img_index], cmap="gray")
+        if img_index == -1:
+            ax[0].set_title(f"{self.imghigh_name}")
+            ax[0].imshow(self.imghigh, cmap="gray")
+        else:
+            ax[0].set_title(f"{self.imglow_name}{img_index}.png")
+            ax[0].imshow(self.imglow[img_index], cmap="gray")
 
         # Transformed Image
         ax[1].set_title(f"Transformed {self.imglow_name}{img_index}.png")
         ax[1].imshow(new_img, cmap="gray")
         plt.show()
 
-    def histogram_equalization(self, img_index: int, joint_equalization: bool=False, L: np.uint8=256, show_image: bool=False) -> np.array:
+    def histogram_equalization(self, img_index: int, joint_equalization: bool=False, L: np.uint32=256, show_image: bool=False) -> np.array:
         m, n = self.imglow[img_index].shape
         new_image = np.zeros_like(self.imglow[img_index])
         
@@ -73,11 +78,6 @@ class ImageEnhancer:
             self.get_cumulative_histogram(img_index)
             histogram = self.histogram[img_index]
 
-        maxValue = (0, 0)
-        for i, num in enumerate(histogram):
-            if num > maxValue[1]:
-                maxValue = (i, num)
-
         # Applying transformation
         for z in range(L):
             s = ((L - 1) / float(m*n)) * histogram[z]
@@ -85,20 +85,20 @@ class ImageEnhancer:
         self.imglow[img_index] = new_image
 
         if show_image:
-            self.plt_transformation(img_index, new_image)
+            self.plt_transformation(new_image, img_index)
 
         return new_image.copy()
 
     def gamma_correction(self, img_index: int, show_image: bool=False) -> np.array:
-        new_image = np.zeros_like(self.imglow[img_index], dtype=np.uint8)
+        new_image = np.zeros_like(self.imglow[img_index], dtype=np.uint32)
         for i, row in enumerate(self.imglow[img_index]):
             for j, _ in enumerate(row):
                 new_image[i, j] = 255 * (np.power(self.imglow[img_index][i, j] / 255, 1 / self.gamma))
         
-        self.imglow[img_index] = new_image
+        self.imglow[img_index] = new_image.copy()
 
         if show_image:
-            self.plt_transformation(img_index, new_image)
+            self.plt_transformation(new_image, img_index)
 
         return new_image.copy()
     
@@ -107,7 +107,7 @@ class ImageEnhancer:
             return self.superres.copy()
         
         m, n = self.superres_shape
-        self.superres = np.zeros(self.superres_shape, dtype=np.uint8)
+        self.superres = np.zeros(self.superres_shape, dtype=np.uint32)
         for i in range(0, m, 2):
             for j in range(0, n, 2):
                 low_i, low_j = i // 2, j // 2
@@ -117,12 +117,44 @@ class ImageEnhancer:
                 self.superres[i+1][j+1] = self.imglow[3][low_i, low_j]
         
         if show_image:
-            self.plt_transformation(0, self.superres)
+            self.plt_transformation(self.superres, 0)
         
         return self.superres.copy()
+    
+    # Got from: https://stackoverflow.com/questions/7687679/how-to-generate-2d-gaussian-with-python
+    def gaussian_kernel(self, length: int=3, sigma: float=1.0) -> np.array:
+        ax = np.linspace(-(length - 1) / 2., (length - 1) / 2., length)
+        gaussian = np.exp(-0.5 * np.square(ax) / sigma**2) 
+        kernel = np.outer(gaussian, gaussian)
+
+        return kernel / kernel.sum()
+
+    def apply_convolution(self, conv_kernel: np.array, img_index: int=-1) -> np.array:
+        cm, cn = conv_kernel.shape
+        cm //= 2
+        cn //= 2
+
+        if img_index == -1:
+            image = self.superres.copy()
+        else:
+            image = self.imglow[img_index].copy()
+        
+        m, n = image.shape 
+        new_image = np.zeros_like(image, dtype=np.uint8)
+        for i in range(cm, m-cm):
+            for j in range(cn, n-cn):
+                new_image[i, j] = np.multiply(image[i-cm:i+cm+1, j-cn:j+cn+1], conv_kernel).sum()
+        
+        return new_image
+    
+    # https://homepages.inf.ed.ac.uk/rbf/HIPR2/unsharp.htm
+    def unsharp_mask(self, length: int=3, sigma: float=0.5, k: float=0.5) -> None:
+        gaussian_kernel = self.gaussian_kernel(length=length, sigma=sigma)
+        smoothed_img = (self.apply_convolution(gaussian_kernel))
+        self.superres = self.superres.astype(np.uint8) -  k*(self.superres.astype(np.uint8) - smoothed_img)
 
 def rmse(h, h_hat):
-    return np.sqrt(np.mean((h - h_hat)**2))
+    return "%.4f" % np.sqrt(np.mean((h - h_hat)**2))
 
 def read_input():
     imglow = input()
@@ -133,12 +165,9 @@ def read_input():
     return imglow, imghigh, op, gamma
 
 def option_0(enhancer):
-    new_image = enhancer.superresolution(show_image=False)
-    plt.imshow(enhancer.imghigh - enhancer.superres, cmap="gray")
-    plt.show()
-    # plt.imshow(img - enhancer.imglow[0], cmap="gray")
-    # print(img[0,0], img[0,1], img[1,0], img[1,1])
-    return round(rmse(enhancer.imghigh, new_image), 4)
+    _ = enhancer.superresolution(show_image=False)
+    # enhancer.unsharp_mask(length=5,sigma=0.2, k=1)
+    return rmse(enhancer.imghigh, enhancer.superres)
 
 def option_1(enhancer):
     for i in range(4):
@@ -153,10 +182,8 @@ def option_2(enhancer):
     return option_0(enhancer)
 
 def option_3(enhancer):
-    img_rmse = np.array([0, 0, 0, 0])
     for i in range(4):
-        new_image = enhancer.gamma_correction(i)
-        img_rmse[i] = rmse(enhancer.imglow[i], new_image)
+        _ = enhancer.gamma_correction(i)
 
     return option_0(enhancer)
 
@@ -172,3 +199,4 @@ if __name__ == "__main__":
     }
 
     print(operation[op](enhancer))
+
