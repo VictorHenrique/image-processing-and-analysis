@@ -1,5 +1,5 @@
 """ 
-1st Assignment: enhancement and superresolution
+2nd Assignment: Fourier Transform
 2023/1
 SCC0251
 
@@ -223,17 +223,3 @@ if __name__ == "__main__":
         
     result = freq_filter.apply_filter(img, filter_mask)
     print(rmse(result, gt))
-
-
-""" 
-x 0) Ideal Low-pass - with radius r;
-x 1) Ideal High-pass - with radius r; 
-x 2) Ideal Band-pass - with radius r1 and r2;
-x 3) Laplacian high-pass (edit: in a previous version we have wrongly asked for
-low-pass);
-x 4) Gaussian Low-pass - with σ1 and σ2;
-x 5) Butterworth low-pass - with D0 and n;
-x 6) Butterworth high-pass - with D0 and n;
-7) Butterworth band-reject - with D0, D1, n1 and n2;
-8) Butterworth band-pass - with D0, D1, n1 and n2;
-"""
