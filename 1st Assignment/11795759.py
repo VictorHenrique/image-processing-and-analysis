@@ -1,6 +1,10 @@
 """ 
-Victor Henrique de Sa Silva
-11795759
+1st Assignment: enhancement and superresolution
+2023/1
+SCC0251
+
+Name: Victor Henrique de Sa Silva
+USP Number: 11795759
 """
 
 import numpy as np
@@ -43,9 +47,10 @@ class ImageEnhancer:
             for i in range(4):
                 self.get_cumulative_histogram(i)
 
-            self.joint_histogram = self.histogram.sum(axis=0) / 4
+            # Sum of histograms
+            self.joint_histogram = self.histogram.sum(axis=0) 
             self.has_joint_histogram = True
-    
+
     def plt_transformation(self, new_img: np.array, img_index: int=-1) -> None:
         _, ax = plt.subplots(1, 2)
         ax[0].set_xlim([len(new_img), 0])
@@ -80,7 +85,7 @@ class ImageEnhancer:
 
         # Applying transformation
         for z in range(L):
-            s = ((L - 1) / float(m*n)) * histogram[z]
+            s = ((L - 1) / histogram[-1]) * histogram[z]
             new_image[np.where(self.imglow[img_index] == z)] = s
         self.imglow[img_index] = new_image
 
@@ -90,10 +95,12 @@ class ImageEnhancer:
         return new_image.copy()
 
     def gamma_correction(self, img_index: int, show_image: bool=False) -> np.array:
-        new_image = np.zeros_like(self.imglow[img_index], dtype=np.uint32)
-        for i, row in enumerate(self.imglow[img_index]):
-            for j, _ in enumerate(row):
-                new_image[i, j] = 255 * (np.power(self.imglow[img_index][i, j] / 255, 1 / self.gamma))
+        new_image = np.zeros_like(self.imglow[img_index], dtype=np.uint8)
+
+        # Changing gamma value
+        for z in range(256):
+            s = 255 * (np.power(z / 255, 1 / self.gamma))
+            new_image[np.where(self.imglow[img_index] == z)] = s
         
         self.imglow[img_index] = new_image.copy()
 
@@ -121,7 +128,7 @@ class ImageEnhancer:
         
         return self.superres.copy()
     
-    # Got from: https://stackoverflow.com/questions/7687679/how-to-generate-2d-gaussian-with-python
+    """ Methods to reduce MRSE. To use them, uncomment line 177 """
     def gaussian_kernel(self, length: int=3, sigma: float=1.0) -> np.array:
         ax = np.linspace(-(length - 1) / 2., (length - 1) / 2., length)
         gaussian = np.exp(-0.5 * np.square(ax) / sigma**2) 
@@ -153,6 +160,7 @@ class ImageEnhancer:
         smoothed_img = (self.apply_convolution(gaussian_kernel))
         self.superres = self.superres.astype(np.uint8) -  k*(self.superres.astype(np.uint8) - smoothed_img)
 
+""" Assignment Operations """
 def rmse(h, h_hat):
     return "%.4f" % np.sqrt(np.mean((h - h_hat)**2))
 
@@ -199,4 +207,3 @@ if __name__ == "__main__":
     }
 
     print(operation[op](enhancer))
-
