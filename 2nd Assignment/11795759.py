@@ -21,11 +21,15 @@ class FrequencyFilter:
     
 
     def apply_filter(self, image: np.array, mask: np.array, show_img: bool=False, save_img: bool=False, filename: str="") -> np.array:
+        # Filtering frequencies 
         F = self.get_frequency_domain(image)
         g = np.multiply(F, mask)
 
+        # Inverse Fourier to return to the spatial domain
         result = np.real(np.fft.ifft2(np.fft.ifftshift(g)))
         rmax, rmin = result.max(), result.min()
+
+        # Normalizing values
         result = (255 * (result - rmin) / (rmax - rmin)).astype(np.uint16)
 
         if show_img:
@@ -41,11 +45,15 @@ class FrequencyFilter:
     
     def get_distances_from_center(self, P: int, Q: int) -> np.array:
         center_x, center_y = P/2, Q/2
+
+        # Column and row vectors of indexes
         Y, X = np.ogrid[:P, :Q]
+
+        # Making use of broadcasting to calculate distances
         return np.sqrt((X - center_x)**2 + (Y - center_y)**2)
 
 
-    def get_ideal_lowpass_filter(self, image: np.array, radius: int, show_mask: bool=False) -> np.array:
+    def get_ideal_lowpass_mask(self, image: np.array, radius: int, show_mask: bool=False) -> np.array:
         lowpass = np.zeros_like(image, dtype=np.float32)
         P, Q = image.shape
 
@@ -60,7 +68,7 @@ class FrequencyFilter:
         return lowpass
     
 
-    def get_ideal_highpass_filter(self, image: np.array, radius: int, show_mask: bool=False) -> np.array:
+    def get_ideal_highpass_mask(self, image: np.array, radius: int, show_mask: bool=False) -> np.array:
         highpass = np.ones_like(image, dtype=np.float32)
         P, Q = image.shape
 
@@ -75,7 +83,7 @@ class FrequencyFilter:
         return highpass
     
 
-    def get_ideal_bandpass_filter(self, image: np.array, smaller_radius: int, bigger_radius: int, show_mask: bool=False) -> np.array:
+    def get_ideal_bandpass_mask(self, image: np.array, smaller_radius: int, bigger_radius: int, show_mask: bool=False) -> np.array:
         bandpass = np.zeros_like(image, dtype=np.float32)
         P, Q = image.shape
 
@@ -94,9 +102,9 @@ class FrequencyFilter:
         return bandpass
 
 
-    def get_laplacian_highpass_filter(self, image: np.array, show_mask: bool=False) -> np.array:
+    def get_laplacian_highpass_mask(self, image: np.array, show_mask: bool=False) -> np.array:
         P, Q = image.shape
-        laplacian = 4*(np.pi**2)* (self.get_distances_from_center(P, Q)**2)
+        laplacian = 4*(np.pi**2) * (self.get_distances_from_center(P, Q)**2)
         if show_mask:
             plt.imshow(laplacian, cmap="gray")
             plt.show()
@@ -104,10 +112,12 @@ class FrequencyFilter:
         return laplacian
     
     
-    def get_gaussian_lowpass_filter(self, image: np.array, sigma_r: float, sigma_c: float, show_mask: bool=False) -> np.array:
+    def get_gaussian_lowpass_mask(self, image: np.array, sigma_r: float, sigma_c: float, show_mask: bool=False) -> np.array:
         P, Q = image.shape
         Y, X = np.ogrid[:P, :Q]
-        gaussian = np.exp(-((Y - (P/2))**2/(2*sigma_r**2) +  (X - (Q/2))**2/(2*sigma_c**2)))
+
+        x = ((Y - (P / 2))**2 / (2*sigma_r**2) +  (X - (Q /2 ))**2 / (2*sigma_c**2))
+        gaussian = np.exp(-x)
         if show_mask:
             plt.imshow(gaussian, cmap="gray")
             plt.show()
@@ -115,7 +125,7 @@ class FrequencyFilter:
         return gaussian
 
 
-    def get_butterworth_lowpass_filter(self, image: np.array, D0: int, n: int, show_mask: bool=False) -> np.array:
+    def get_butterworth_lowpass_mask(self, image: np.array, D0: int, n: int, show_mask: bool=False) -> np.array:
         P, Q = image.shape
         distances = self.get_distances_from_center(P, Q)
         H = 1 / (1 + np.power(distances/D0, 2*n))
@@ -126,10 +136,13 @@ class FrequencyFilter:
         return H
 
 
-    def get_butterworth_highpass_filter(self, image: np.array, D0: int, n: int, show_mask: bool=False) -> np.array:
+    def get_butterworth_highpass_mask(self, image: np.array, D0: int, n: int, show_mask: bool=False) -> np.array:
         P, Q = image.shape
         distances = self.get_distances_from_center(P, Q)
-        distances[distances == 0.0] = 1.0
+
+        # Avoiding division by zero
+        distances[distances == 0.0] = 1.0   
+                    
         H = 1 / (1 + np.power(distances/D0, -2*n))
         if show_mask:
             plt.imshow(H, cmap="gray")
@@ -137,10 +150,10 @@ class FrequencyFilter:
         
         return H
     
-
-    def get_butterworth_bandreject_filter(self, image: np.array, D0: int, n0: int, D1: int, n1: int, show_mask: bool=False) -> np.array:
-        low1 = self.get_butterworth_lowpass_filter(image, D0, n0)
-        low2 = self.get_butterworth_lowpass_filter(image, D1, n1)
+    
+    def get_butterworth_bandreject_mask(self, image: np.array, D0: int, n0: int, D1: int, n1: int, show_mask: bool=False) -> np.array:
+        low1 = self.get_butterworth_lowpass_mask(image, D0, n0)
+        low2 = self.get_butterworth_lowpass_mask(image, D1, n1)
         butterworth_bandreject = 1.0 - (low1 - low2)
         if show_mask:
             plt.imshow(butterworth_bandreject, cmap="gray")
@@ -149,9 +162,9 @@ class FrequencyFilter:
         return butterworth_bandreject
 
     
-    def get_butterworth_bandpass_filter(self, image: np.array, D0: int, n0: int, D1: int, n1: int, show_mask: bool=False) -> np.array:
-        low1 = self.get_butterworth_lowpass_filter(image, D0, n0)
-        low2 = self.get_butterworth_lowpass_filter(image, D1, n1)
+    def get_butterworth_bandpass_mask(self, image: np.array, D0: int, n0: int, D1: int, n1: int, show_mask: bool=False) -> np.array:
+        low1 = self.get_butterworth_lowpass_mask(image, D0, n0)
+        low2 = self.get_butterworth_lowpass_mask(image, D1, n1)
         butterworth_bandpass = low1 - low2
         if show_mask:
             plt.imshow(butterworth_bandpass, cmap="gray")
@@ -203,23 +216,23 @@ if __name__ == "__main__":
     gt = read_image(gt_name) 
 
     if op == 0:
-        filter_mask = freq_filter.get_ideal_lowpass_filter(img, params[0])
+        filter_mask = freq_filter.get_ideal_lowpass_mask(img, params[0])
     elif op == 1:
-        filter_mask = freq_filter.get_ideal_highpass_filter(img, params[0])
+        filter_mask = freq_filter.get_ideal_highpass_mask(img, params[0])
     elif op == 2:
-        filter_mask = freq_filter.get_ideal_bandpass_filter(img, params[0], params[1])
+        filter_mask = freq_filter.get_ideal_bandpass_mask(img, params[0], params[1])
     elif op == 3:
-        filter_mask = freq_filter.get_laplacian_highpass_filter(img)
+        filter_mask = freq_filter.get_laplacian_highpass_mask(img)
     elif op == 4:
-        filter_mask = freq_filter.get_gaussian_lowpass_filter(img, params[0], params[1])
+        filter_mask = freq_filter.get_gaussian_lowpass_mask(img, params[0], params[1])
     elif op == 5:
-        filter_mask = freq_filter.get_butterworth_lowpass_filter(img, params[0], params[1])
+        filter_mask = freq_filter.get_butterworth_lowpass_mask(img, params[0], params[1])
     elif op == 6:
-        filter_mask = freq_filter.get_butterworth_highpass_filter(img, params[0], params[1])
+        filter_mask = freq_filter.get_butterworth_highpass_mask(img, params[0], params[1])
     elif op == 7:
-        filter_mask = freq_filter.get_butterworth_bandreject_filter(img, params[0], params[2], params[1], params[3])
+        filter_mask = freq_filter.get_butterworth_bandreject_mask(img, params[0], params[2], params[1], params[3])
     elif op == 8:
-        filter_mask = freq_filter.get_butterworth_bandpass_filter(img, params[0], params[2], params[1], params[3])
+        filter_mask = freq_filter.get_butterworth_bandpass_mask(img, params[0], params[2], params[1], params[3])
         
     result = freq_filter.apply_filter(img, filter_mask)
     print(rmse(result, gt))
